@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ML/MLOps Interview Handbook  
 ## Final Polished Question–Answer Notes  
 **Focus:** MLOps, AWS SageMaker, Deployment, Monitoring, Pipelines, Reliability, and Production ML
@@ -663,3 +664,6 @@ MLOps is about making machine learning systems **repeatable, observable, scalabl
 ---
 
 
+=======
+this is my git practice for restore to unstagged, reset --soft head~1.
+>>>>>>> refs/remotes/origin/main
