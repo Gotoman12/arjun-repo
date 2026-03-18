@@ -1,0 +1,1 @@
+this is my git practice for restore to unstagged, reset --soft head~1.
