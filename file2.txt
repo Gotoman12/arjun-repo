@@ -1,0 +1,201 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drink-blue
+  namespace: foo
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: drink-app
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: drink-app
+        version: blue
+    spec:
+      containers:
+      - name: drink-app
+        image: replace
+        ports:
+        - containerPort: 8080
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drink-green
+  namespace: foo
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: drink-app
+      version: green
+  template:
+    metadata:
+      labels:
+        app: drink-app
+        version: green
+    spec:
+      containers:
+      - name: drink-app
+        image: replace
+        ports:
+        - containerPort: 8080
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: drink-service
+  namespace: foo
+spec:
+  selector:
+    app: drink-app
+    version: blue   # switch to green during rollout
+  ports:
+  - port: 80
+    targetPort: 8080
+
+
+stage("Blue-Green Switch") {
+    steps {
+        script {
+            def active = sh(script: "kubectl get svc drink-service -n ${NAMESPACE} -o jsonpath='{.spec.selector.version}'", returnStdout: true).trim()
+            def target = (active == "blue") ? "green" : "blue"
+
+            echo "Active color: ${active}, deploying to: ${target}"
+
+            sh """
+                sed -i 's|replace|${FINALIAMGE}|g' ${target}.yaml
+                kubectl apply -f ${target}.yaml -n ${NAMESPACE}
+            """
+
+            // Switch service to new version
+            sh """
+                kubectl patch svc drink-service -n ${NAMESPACE} -p '{"spec":{"selector":{"app":"drink-app","version":"${target}"}}}'
+            """
+        }
+    }
+}
+
+
+pipeline {
+    agent any
+    stages {
+        stage('Vault Secrets') {
+            steps {
+                script {
+                    def secrets = [
+                        [
+                            path: 'secret/jenkins/k8s',
+                            engineVersion: 2,
+                            secretValues: [
+                                [envVar: 'CLUSTERNAME', vaultKey: 'CLUSTERNAME'],
+                                [envVar: 'NAMESPACE', vaultKey: 'NAMESPACE'],
+                                [envVar: 'FINALIAMGE', vaultKey: 'FINALIAMGE']
+                            ]
+                        ]
+                    ]
+
+                    def config = [
+                        vaultUrl: 'http://my-vault.com:8200',
+                        vaultCredentialId: 'vault-approle'
+                    ]
+
+                    withVault([configuration: config, vaultSecrets: secrets]) {
+                        // Now CLUSTERNAME, NAMESPACE, FINALIAMGE are available as env vars
+                        echo "Cluster: $CLUSTERNAME"
+                        echo "Namespace: $NAMESPACE"
+                        echo "Image: $FINALIAMGE"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy K8s') {
+            steps {
+                script {
+                    withKubeConfig(
+                        caCertificate: '',
+                        clusterName: "${CLUSTERNAME}",
+                        contextName: '',
+                        credentialsId: 'kube',
+                        namespace: "${NAMESPACE}",
+                        restrictKubeConfigAccess: false,
+                        serverUrl: 'https://B8E6BC948B3311CCA4C6FB401E20EF84.gr7.us-east-1.eks.amazonaws.com'
+                    ) {
+                        sh """
+                            sed -i 's|replace|${FINALIAMGE}|g' deployment.yaml
+                            kubectl apply -f deployment.yaml -n ${NAMESPACE} --timeout=600s
+                        """
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: production
+spec:
+  rules:
+  - host: moulya-arjun-vidya.duckdns.org
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: service1
+            port:
+              number: 80
+  - host: "*.foo.com"
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/foo"
+        backend:
+          service:
+            name: service2
+            port:
+              number: 80
+
+
+# Use this code snippet in your app.
+# If you need more information about configurations
+# or implementing the sample code, visit the AWS docs:
+# https://aws.amazon.com/developer/language/python/
+
+import boto3
+from botocore.exceptions import ClientError
+
+
+def get_secret():
+
+    secret_name = "secret-name"
+    region_name = "us-east-1"
+
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    secret = get_secret_value_response['SecretString']
+
+    # Your code goes here.
