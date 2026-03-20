@@ -1,1 +1,12 @@
-This is first file
+This is first file file
+1. Docker Image Size Is Too Large – How Do You Optimize It?
+Scenario: You’ve built a Docker image for a Python app, and it's 1.5GB. How would you reduce it?
+
+What They Look For:
+Multi-stage builds
+
+Use of minimal base images (alpine, distroless)
+
+Avoid unnecessary layers
+
+Clear .dockerignore
